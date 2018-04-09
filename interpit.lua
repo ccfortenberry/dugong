@@ -7,18 +7,13 @@
 -- Interpret AST from parseit.parse
 -- For Assignment 6, Exercise B
 
-
 -- *******************************************************************
 -- * To run a Dugong program, use dugong.lua (which uses this file). *
 -- *******************************************************************
 
-
 local interpit = {}  -- Our module
 
-
 -- ***** Variables *****
-
-
 -- Symbolic Constants for AST
 
 local STMT_LIST   = 1
@@ -38,10 +33,7 @@ local BOOLLIT_VAL = 14
 local SIMPLE_VAR  = 15
 local ARRAY_VAR   = 16
 
-
 -- ***** Utility Functions *****
-
-
 -- numToInt
 -- Given a number, return the number rounded toward zero.
 local function numToInt(n)
@@ -53,7 +45,6 @@ local function numToInt(n)
 		return math.ceil(n)
 	end
 end
-
 
 -- strToNum
 -- Given a string, attempt to interpret it as an integer. If this
@@ -73,7 +64,6 @@ local function strToNum(s)
 	end
 end
 
-
 -- numToStr
 -- Given a number, return its string form.
 local function numToStr(n)
@@ -92,7 +82,6 @@ local function strToBool(str)
 	end
 end
 
-
 -- boolToInt
 -- Given a boolean, return 1 if it is true, 0 if it is false.
 local function boolToInt(b)
@@ -104,7 +93,6 @@ local function boolToInt(b)
 		return 0
 	end
 end
-
 
 -- astToStr
 -- Given an AST, produce a string holding the AST in (roughly) Lua form,
@@ -155,10 +143,7 @@ function astToStr(x)
 	end
 end
 
-
 -- ***** Primary Function for Client Code *****
-
-
 -- interp
 -- Interpreter, given AST returned by parseit.parse.
 -- Parameters:
@@ -179,69 +164,70 @@ function interpit.interp(ast, state, incall, outcall)
 	-- portion of the code it is interpreting. The function-wide
 	-- versions of state, incall, and outcall may be used. The
 	-- function-wide version of state may be modified as appropriate.
-
-
+	
 	function interp_stmt_list(ast)
 		for i = 2, #ast do
 			interp_stmt(ast[i])
 		end
 	end
 
-
 	function interp_stmt(ast)
 		local name, body, str
 
 		if ast[1] == INPUT_STMT then
-			print(astToStr(ast))
 			if ast[2][1] == SIMPLE_VAR then
 				name = ast[2][2]
 				body = incall()
 				state.v[name] = numToInt(strToNum(body))
 			end
+			
 		elseif ast[1] == PRINT_STMT then
 			for i = 2, #ast do
 				if ast[i][1] == CR_OUT then
-					print(astToStr(ast))
 					outcall("\n")
 				elseif ast[i][1] == STRLIT_OUT then
-					print(astToStr(ast))
 					str = ast[i][2]
 					outcall(str:sub(2,str:len()-1))  -- Remove quotes
 				else
-					print(astToStr(ast))
 					body = eval_expr(ast[2])
-					print(type(body))
 					outcall(numToStr(body))
 				end
 			end
+			
 		elseif ast[1] == FUNC_STMT then
-			print(astToStr(ast))
 			name = ast[2]
 			body = ast[3]
 			state.f[name] = body
+			
 		elseif ast[1] == CALL_FUNC then
-			print(astToStr(ast))
 			name = ast[2]
 			body = state.f[name]
-			if body == nil then
-				body = { STMT_LIST }  -- Default AST
-			end
+			if body == nil then body = { STMT_LIST } end -- Default AST
 			interp_stmt_list(body)
-		elseif ast[1] == IF_STMT then -- FIXIT
-			print(astToStr(ast))
-			if eval_expr(ast[2]) ~= 0 then
-				interp_stmt_list(ast[3])
-			elseif eval_expr(ast[2]) == 0 and ast[4] ~= nil then
-				interp_stmt_list(ast[4])
+			
+		elseif ast[1] == IF_STMT then
+			local passed = false
+			local counter = 0
+			
+			for i=2, #ast-1, 2 do
+				if eval_expr(ast[i]) ~= 0 and not passed then
+					interp_stmt_list(ast[i+1])
+					passed = true
+				end
+				counter = i
 			end
+			
+			if ast[counter+2] ~= nil and not passed then
+				interp_stmt_list(ast[counter+2])
+			end
+			
 		elseif ast[1] == WHILE_STMT then
-			print(astToStr(ast))
 			while eval_expr(ast[2]) ~= 0 do
 				interp_stmt_list(ast[3])
 			end
+			
 		else
 			assert(ast[1] == ASSN_STMT)
-			print(astToStr(ast))
 			process_lvalue(ast)
 		end
 	end
@@ -266,70 +252,76 @@ function interpit.interp(ast, state, incall, outcall)
 		
 		if ast[1] == NUMLIT_VAL then
 			value = strToNum(ast[2])
+			
 		elseif ast[1] == SIMPLE_VAR then
 			value = state.v[ast[2]]
+			
 		elseif ast[1] == ARRAY_VAR then
 			if state.a[ast[2]] ~= nil then 
 				value = state.a[ast[2]][eval_expr(ast[3])]
 			else
 				value = 0
 			end
+			
 		elseif ast[1] == BOOLLIT_VAL then
 			value = boolToInt(strToBool(ast[2]))
+			
 		elseif ast[1] == CALL_FUNC then
-			-- TODO
+			local name = ast[2]
+			local body = state.f[name]
+			if body == nil then body = { STMT_LIST } end -- Default AST
+			interp_stmt_list(body)
+			-- value = 49 -- :^)
+			value = state.v["return"]
+			
 		elseif type(ast[1]) == "table" then
 			if ast[1][1] == UN_OP then
+				local unary = eval_expr(ast[2])
+				
 				if ast [1][2] == "+" then
-					value = eval_expr(ast[2])
+					value = unary
 				elseif ast [1][2] == "-" then
-					value = -(eval_expr(ast[2]))
+					value = -(unary)
 				else -- unary !
-					local notValue = eval_expr(ast[2])
-					if notValue == 0 then
+					if unary == 0 then
 						value = 1
 					else
 						value = 0
 					end
 				end
+				
 			elseif ast[1][1] == BIN_OP then
+				local lhs = eval_expr(ast[2])
+				local rhs = eval_expr(ast[3])
+				local bool = lhs == rhs
+					
 				if ast[1][2] == "+" then
-					value = eval_expr(ast[2]) + eval_expr(ast[3])
+					value = lhs + rhs
 				elseif ast[1][2] == "-" then
-					value = eval_expr(ast[2]) - eval_expr(ast[3])
+					value = lhs - rhs
 				elseif ast[1][2] == "*" then
-					value = eval_expr(ast[2]) * eval_expr(ast[3])
+					value = lhs * rhs
 				elseif ast[1][2] == "/" then
-					local zero = eval_expr(ast[3])
-					if zero == 0 then
-						value = zero
-					else
-						value = numToInt(eval_expr(ast[2]) / zero)
+					if rhs == 0 then value = rhs
+					else value = numToInt(lhs / rhs)
 					end
 				elseif ast[1][2] == "%" then
-					local zero = eval_expr(ast[3])
-					if zero == 0 then
-						value = zero
-					else
-						value = numToInt(eval_expr(ast[2]) % zero)
+					if rhs == 0 then value = rhs
+					else value = numToInt(lhs % rhs)
 					end
 				elseif ast[1][2] == "==" then
-					value = boolToInt(eval_expr(ast[2]) == eval_expr(ast[3]))
+					value = boolToInt(lhs == rhs)
 				elseif ast[1][2] == "!=" then
-					value = boolToInt(eval_expr(ast[2]) ~= eval_expr(ast[3]))
+					value = boolToInt(lhs ~= rhs)
 				elseif ast[1][2] == "<=" then
-					value = boolToInt(eval_expr(ast[2]) <= eval_expr(ast[3]))
+					value = boolToInt(lhs <= rhs)
 				elseif ast[1][2] == ">=" then
-					value = boolToInt(eval_expr(ast[2]) >= eval_expr(ast[3]))
+					value = boolToInt(lhs >= rhs)
 				elseif ast[1][2] == "<" then
-					value = boolToInt(eval_expr(ast[2]) < eval_expr(ast[3]))
+					value = boolToInt(lhs < rhs)
 				elseif ast[1][2] == ">" then
-					value = boolToInt(eval_expr(ast[2]) > eval_expr(ast[3]))
+					value = boolToInt(lhs > rhs)
 				elseif ast[1][2] == "&&" then
-					local lhs = eval_expr(ast[2])
-					local rhs = eval_expr(ast[3])
-					local bool = lhs == rhs
-					
 					if lhs == 0 and rhs == 0 then
 						value = 0
 					elseif bool then
@@ -338,10 +330,6 @@ function interpit.interp(ast, state, incall, outcall)
 						value = boolToInt(bool)
 					end
 				elseif ast[1][2] == "||" then
-					local lhs = eval_expr(ast[2])
-					local rhs = eval_expr(ast[3])
-					local bool = lhs == rhs
-					
 					if lhs == 0 and rhs == 0 then
 						value = 0
 					elseif lhs ~= 0 or rhs ~= 0 then
@@ -358,23 +346,10 @@ function interpit.interp(ast, state, incall, outcall)
 		end
 	end
 	
-	function get_lvalue(ast)
-		
-	end
-	
-	function set_lvalue(ast)
-		
-	end
-
-
 	-- Body of function interp
 	interp_stmt_list(ast)
 	return state
 end
 
-
 -- ***** Module Export *****
-
-
 return interpit
-
